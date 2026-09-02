@@ -13,17 +13,23 @@ class ProxyGetter:
 
     def build_proxy_list(self):
         try:
+            if not os.path.exists(self.pathed_file_name):
+                os.makedirs(os.path.dirname(self.pathed_file_name), exist_ok=True)
+                with open(self.pathed_file_name, "w", encoding="utf-8") as f:
+                    f.write("# Format: ip:port or ip:port:user:password\n")
+                logger.info(f"Created template proxy file at {self.pathed_file_name}")
+                return
+
             if self.pathed_file_name.endswith(".txt"):
                 self.build_proxy_list_txt()
             else:
-                print("File type not supported")
+                logger.warning("Proxy file type not supported, expected .txt")
         except Exception as e:
-            logger.exception(e)
-            raise FileNotFoundError(f"Unable to find {self.pathed_file_name}")
+            logger.exception(f"Error loading proxy list: {e}")
 
     def build_proxy_list_txt(self):
-        with open(self.pathed_file_name, "r") as fp:
-            proxy_list = [line.strip() for line in fp if line.strip()]
+        with open(self.pathed_file_name, "r", encoding="utf-8") as fp:
+            proxy_list = [line.strip() for line in fp if line.strip() and not line.strip().startswith("#")]
 
         for proxy in proxy_list:
             proxy_parts = proxy.split(":")

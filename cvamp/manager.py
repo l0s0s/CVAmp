@@ -28,6 +28,7 @@ class InstanceManager:
         proxy_file_name,
         spawn_interval_seconds=2,
         target_url=None,
+        low_cpu=False,
     ):
         logger.info(f"Manager start on {platform.platform()}")
 
@@ -35,7 +36,8 @@ class InstanceManager:
         self._delete_thread_count = delete_thread_count
         self._headless = headless
         self._auto_restart = auto_restart
-        self.proxies = ProxyGetter(os.path.join(os.getcwd(), "proxy", proxy_file_name))
+        self._low_cpu = low_cpu
+        self.proxies = ProxyGetter(proxy_file_name)
         self.spawn_interval_seconds = spawn_interval_seconds
         self.target_url = target_url
 
@@ -48,6 +50,14 @@ class InstanceManager:
         self.instances_watching_count = 0
 
         self.restart_checker = RestartChecker(manager=self, restart_interval_s=1200)
+
+        # Chat and AutoChat configurations
+        self.auto_chat_enabled = False
+        self.chat_message = ""
+        self.chat_interval_min = 30
+        self.chat_interval_max = 60
+        self._autochat_thread = None
+        self._autochat_stop_event = threading.Event()
 
     def get_headless(self) -> bool:
         return self._headless
@@ -63,8 +73,63 @@ class InstanceManager:
         self._auto_restart = new_value
         self.reconfigure_auto_restart_status()
 
+    def get_low_cpu(self) -> bool:
+        return self._low_cpu
+
+    def set_low_cpu(self, new_value: bool):
+        logger.info(f"Setting low_cpu mode to {new_value}")
+        self._low_cpu = new_value
+
+    def set_autochat(self, enabled: bool, message: str = "", interval_min: int = 30, interval_max: int = 60):
+        self.auto_chat_enabled = enabled
+        self.chat_message = message
+        self.chat_interval_min = max(5, interval_min)
+        self.chat_interval_max = max(self.chat_interval_min, interval_max)
+
+        if enabled:
+            if not self._autochat_thread or not self._autochat_thread.is_alive():
+                self._autochat_stop_event.clear()
+                self._autochat_thread = threading.Thread(target=self._autochat_worker, daemon=True)
+                self._autochat_thread.start()
+                logger.info("AutoChat thread started.")
+        else:
+            self._autochat_stop_event.set()
+            logger.info("AutoChat thread stopped.")
+
+    def _autochat_worker(self):
+        while not self._autochat_stop_event.is_set():
+            delay = random.randint(self.chat_interval_min, self.chat_interval_max)
+            if self._autochat_stop_event.wait(delay):
+                break
+            if self.auto_chat_enabled and self.chat_message:
+                self.send_chat_message(self.chat_message)
+
+    def send_chat_message(self, message: str, instance_id=None):
+        if not message:
+            return
+        with self.manager_lock:
+            active_instances = [
+                inst for inst in self.browser_instances.values()
+                if inst.status != utils.InstanceStatus.SHUTDOWN
+            ]
+            if not active_instances:
+                print("No active instances to send chat message.")
+                return
+
+            if instance_id is not None:
+                if instance_id in self.browser_instances:
+                    target_inst = self.browser_instances[instance_id]
+                    target_inst.pending_chat_message = message
+                    target_inst.command = InstanceCommands.CHAT
+            else:
+                # Send to random active instance
+                target_inst = random.choice(active_instances)
+                target_inst.pending_chat_message = message
+                target_inst.command = InstanceCommands.CHAT
+
     def __del__(self):
         print("Deleting manager: cleaning up instances", datetime.datetime.now())
+        self._autochat_stop_event.set()
         self.delete_all_instances()
         print("Manager shutting down", datetime.datetime.now())
 
@@ -165,6 +230,7 @@ class InstanceManager:
                 location_info=screen_location,
                 headless=self._headless,
                 auto_restart=self._auto_restart,
+                low_cpu=self._low_cpu,
                 instance_id=browser_instance_id,
             )
 

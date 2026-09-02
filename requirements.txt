@@ -1,0 +1,6 @@
+playwright>=1.43.0
+playwright-stealth>=1.0.6
+psutil>=5.9.0
+toml>=0.10.2
+sv-ttk>=0.1
+python-dateutil>=2.8.2

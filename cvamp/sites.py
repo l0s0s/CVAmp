@@ -168,6 +168,21 @@ class Youtube(Instance):
         self.page.keyboard.press("f")
         self.status = utils.InstanceStatus.INITIALIZED
 
+    def send_chat(self, message: str) -> bool:
+        try:
+            selectors = ['div#input[contenteditable="true"]', '#input.yt-live-chat-text-input-field-renderer']
+            for s in selectors:
+                el = self.page.query_selector(s)
+                if el:
+                    el.click()
+                    el.fill(message)
+                    self.page.keyboard.press("Enter")
+                    logger.info(f"Youtube Instance {self.id} sent chat: {message}")
+                    return True
+        except Exception as e:
+            logger.warning(f"Youtube Instance {self.id} error sending chat: {e}")
+        return super().send_chat(message)
+
 
 class Kick(Instance):
     site_name = "KICK"
@@ -199,6 +214,21 @@ class Kick(Instance):
         self.page.wait_for_timeout(1000)
         if 'cloudflare' in self.page.content().lower():
             raise utils.CloudflareBlockException("Blocked by Cloudflare.")
+
+    def send_chat(self, message: str) -> bool:
+        try:
+            selectors = ['div#message-input', 'div[contenteditable="true"]', 'textarea#message-input']
+            for s in selectors:
+                el = self.page.query_selector(s)
+                if el:
+                    el.click()
+                    el.fill(message)
+                    self.page.keyboard.press("Enter")
+                    logger.info(f"Kick Instance {self.id} sent chat: {message}")
+                    return True
+        except Exception as e:
+            logger.warning(f"Kick Instance {self.id} error sending chat: {e}")
+        return super().send_chat(message)
 
 
 class Twitch(Instance):
@@ -292,6 +322,25 @@ class Twitch(Instance):
                 "button[data-a-target=content-classification-gate-overlay-start-watching-button]", timeout=3000
             )
         except:
-            logger.info("Mature button not found/clicked.")
+            pass
 
         self.status = utils.InstanceStatus.INITIALIZED
+
+    def send_chat(self, message: str) -> bool:
+        try:
+            selectors = [
+                'textarea[data-a-target="chat-input"]',
+                'div[data-a-target="chat-input"]',
+                'div[contenteditable="true"]',
+            ]
+            for s in selectors:
+                el = self.page.query_selector(s)
+                if el:
+                    el.click()
+                    el.fill(message)
+                    self.page.keyboard.press("Enter")
+                    logger.info(f"Twitch Instance {self.id} sent chat: {message}")
+                    return True
+        except Exception as e:
+            logger.warning(f"Twitch Instance {self.id} error sending chat: {e}")
+        return super().send_chat(message)

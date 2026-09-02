@@ -143,68 +143,112 @@ class GUI:
 class TabChat(tk.Frame):
     def __init__(self, parent, manager, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
-        self.chat_timer_start_value = tk.StringVar()
-        self.chat_timer_stop_value = tk.StringVar()
+        self.chat_timer_start_value = tk.StringVar(value="30")
+        self.chat_timer_stop_value = tk.StringVar(value="60")
         self.parent = parent
         self.manager = manager
-        self.dropdown_selection = tk.StringVar()
-        self.dropdown_selection.set("no chatters")
         self.auto_chat_enabled = tk.BooleanVar(value=False)
 
-        manual = ttk.Labelframe(self, text='Manual Chat', name='manual')
-        manual.place(y=7, x=0, relx=0, rely=0, relwidth=1, height=80)
+        manual = ttk.Labelframe(self, text='Manual Chat (PRO Unlocked)', name='manual')
+        manual.place(y=5, x=10, relwidth=0.96, height=50)
 
-        chat_message_box = tk.Entry(manual, width=60, name="chat_message_box")
-        chat_message_box.place(x=15, y=10)
-        chat_message_box.insert(0, "Available in the PRO version - now free for everyone!")
-        chat_message_box.configure(state="disabled")
+        self.chat_message_box = tk.Entry(manual, width=42, name="chat_message_box")
+        self.chat_message_box.place(x=10, y=3)
+        self.chat_message_box.insert(0, "Hello streamer! GG")
 
-        lbl_buy = tk.Label(self, text="Get PRO Version (Free)", fg="blue", cursor="hand2")
-        lbl_buy.bind("<Button-1>", lambda event: webbrowser.open("https://blueloperlabs.ch/cvamp/tf"))
-        lbl_buy.place(x=410, y=33)
+        send_button = tk.Button(
+            manual,
+            width=12,
+            text="Send msg",
+            command=self.send_manual_message,
+        )
+        send_button.place(x=360, y=0)
 
-        auto_frame = ttk.Labelframe(self, text='Auto Chat')
-        auto_frame.place(y=70, x=0, relx=0, rely=0, relwidth=1, height=80)
+        send_all_button = tk.Button(
+            manual,
+            width=12,
+            text="Send to all",
+            command=self.send_manual_message_all,
+        )
+        send_all_button.place(x=465, y=0)
+
+        auto_frame = ttk.Labelframe(self, text='Auto Chat (PRO Unlocked)')
+        auto_frame.place(y=60, x=10, relwidth=0.96, height=50)
 
         chat_switch = ttk.Checkbutton(
             auto_frame,
-            state=tk.DISABLED,
             variable=self.auto_chat_enabled,
             text="Autochat enabled",
+            command=self.toggle_autochat,
         )
-        chat_switch.place(x=15, y=6)
+        chat_switch.place(x=10, y=3)
 
         self.chat_timer_start = tk.Spinbox(
             auto_frame,
-            state='readonly',
-            from_=10,
+            from_=5,
             to=600,
             wrap=True,
             width=4,
             increment=5,
             textvariable=self.chat_timer_start_value,
+            command=self.toggle_autochat,
         )
-        self.chat_timer_start.place(x=160, y=6)
+        self.chat_timer_start.place(x=140, y=3)
 
         self.chat_timer_stop = tk.Spinbox(
             auto_frame,
-            state='readonly',
-            from_=10,
+            from_=5,
             to=600,
             wrap=True,
             width=4,
             increment=5,
             textvariable=self.chat_timer_stop_value,
+            command=self.toggle_autochat,
         )
-        self.chat_timer_stop.place(x=200, y=6)
+        self.chat_timer_stop.place(x=185, y=3)
 
-        chat_interval_text = tk.Label(auto_frame, text="Chat interval range (s)", borderwidth=2)
-        chat_interval_text.place(x=241, y=5)
+        chat_interval_text = tk.Label(auto_frame, text="Range (s)", borderwidth=1)
+        chat_interval_text.place(x=230, y=3)
 
         send_auto_chat_button = tk.Button(
-            auto_frame, width=14, height=1, anchor="w", text="Send one message", state=tk.DISABLED
+            auto_frame,
+            width=16,
+            text="Send one message",
+            command=self.send_manual_message,
         )
-        send_auto_chat_button.place(x=430, y=1)
+        send_auto_chat_button.place(x=410, y=0)
+
+    def get_message(self) -> str:
+        return self.chat_message_box.get().strip()
+
+    def send_manual_message(self):
+        msg = self.get_message()
+        if msg:
+            threading.Thread(target=self.manager.send_chat_message, args=(msg,)).start()
+
+    def send_manual_message_all(self):
+        msg = self.get_message()
+        if msg:
+            def _send_all():
+                with self.manager.manager_lock:
+                    instance_ids = list(self.manager.browser_instances.keys())
+                for i_id in instance_ids:
+                    self.manager.send_chat_message(msg, instance_id=i_id)
+                    time.sleep(0.5)
+            threading.Thread(target=_send_all).start()
+
+    def toggle_autochat(self):
+        try:
+            start_val = int(self.chat_timer_start_value.get())
+            stop_val = int(self.chat_timer_stop_value.get())
+        except ValueError:
+            start_val, stop_val = 30, 60
+        self.manager.set_autochat(
+            enabled=self.auto_chat_enabled.get(),
+            message=self.get_message(),
+            interval_min=start_val,
+            interval_max=stop_val,
+        )
 
 
 class TabMain(tk.Frame):
@@ -213,7 +257,7 @@ class TabMain(tk.Frame):
         self.manager = manager
         self.headless = tk.BooleanVar(value=manager.get_headless())
         self.auto_restart = tk.BooleanVar(value=manager.get_auto_restart())
-        self.block_video_checkbox_value = tk.BooleanVar(value=False)
+        self.block_video_checkbox_value = tk.BooleanVar(value=manager.get_low_cpu())
 
         global system_default_color
         system_default_color = self.cget("bg")
@@ -270,7 +314,8 @@ class TabMain(tk.Frame):
             onvalue=True,
             offvalue=False,
             variable=self.block_video_checkbox_value,
-            state=tk.DISABLED,
+            command=lambda: self.manager.set_low_cpu(self.block_video_checkbox_value.get()),
+            state=tk.NORMAL,
         )
         block_video_checkbox.place(x=344, y=94)
 
@@ -358,15 +403,15 @@ class TabAbout(tk.Frame):
         super().__init__(parent, *args, **kwargs)
         info_text = tk.Label(
             self,
-            text="Thank You for your support! The Pro version is now available to everyone as a free executable.\n"
-            "We only use GitHub and blueloperlabs.ch. Other sites, users and resellers are fake - be careful!\n"
-            "Purchasing recommended proxies helps the project advance.",
+            text="CVAmp - PRO Full Edition (Unlocked)\n"
+            "All PRO features (Manual/Auto Chat, Low CPU mode, Browser Stealth Anti-Detection) are active.\n"
+            "Spawns low-resolution muted Chrome instances with proxy & anti-detection masking.",
             borderwidth=2,
             justify="center",
         )
         info_text.place(relx=0.5, y=10, anchor="n")
 
-        lbl_buy = tk.Label(self, text="Get Recommended Proxies", fg="blue", cursor="hand2")
+        lbl_buy = tk.Label(self, text="Proxy Setup & Guide", fg="blue", cursor="hand2")
         lbl_buy.bind(
             "<Button-1>",
             lambda event: threading.Thread(

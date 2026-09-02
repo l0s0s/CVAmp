@@ -7,6 +7,7 @@ class InstanceCommands(Enum):
     REFRESH = auto()
     EXIT = auto()
     RESTART = auto()
+    CHAT = auto()
     NONE = auto()
 
 

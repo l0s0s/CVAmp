@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 from abc import ABC
 
 
-from . import utils
+from . import utils, stealth
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ class Instance(ABC):
         location_info=None,
         headless=False,
         auto_restart=False,
+        low_cpu=False,
         instance_id=-1,
     ):
         self.playwright = None
@@ -40,6 +41,7 @@ class Instance(ABC):
         self.target_url = target_url
         self.headless = headless
         self.auto_restart = auto_restart
+        self.low_cpu = low_cpu
 
         self.last_restart_dt = datetime.datetime.now()
 
@@ -55,6 +57,7 @@ class Instance(ABC):
             }
 
         self.command = None
+        self.pending_chat_message = None
         self.page = None
 
     def __init_subclass__(cls, **kwargs):
@@ -75,10 +78,26 @@ class Instance(ABC):
 
     def clean_up_playwright(self):
         if any([self.page, self.context, self.browser]):
-            self.page.close()
-            self.context.close()
-            self.browser.close()
-            self.playwright.stop()
+            try:
+                if self.page:
+                    self.page.close()
+            except Exception:
+                pass
+            try:
+                if self.context:
+                    self.context.close()
+            except Exception:
+                pass
+            try:
+                if self.browser:
+                    self.browser.close()
+            except Exception:
+                pass
+            try:
+                if self.playwright:
+                    self.playwright.stop()
+            except Exception:
+                pass
 
     def start(self):
         try:
@@ -109,13 +128,18 @@ class Instance(ABC):
                 self.clean_up_playwright()
                 self.spawn_page(restart=True)
                 self.todo_after_spawn()
-            if self.command == utils.InstanceCommands.SCREENSHOT:
+            elif self.command == utils.InstanceCommands.SCREENSHOT:
                 print("Saved screenshot of instance id", self.id)
                 self.save_screenshot()
-            if self.command == utils.InstanceCommands.REFRESH:
+            elif self.command == utils.InstanceCommands.REFRESH:
                 print("Manual refresh of instance id", self.id)
                 self.reload_page()
-            if self.command == utils.InstanceCommands.EXIT:
+            elif self.command == utils.InstanceCommands.CHAT:
+                if self.pending_chat_message:
+                    print(f"Instance {self.id} sending chat message: {self.pending_chat_message}")
+                    self.send_chat(self.pending_chat_message)
+                    self.pending_chat_message = None
+            elif self.command == utils.InstanceCommands.EXIT:
                 return
             self.command = utils.InstanceCommands.NONE
 
@@ -124,24 +148,14 @@ class Instance(ABC):
         self.page.screenshot(path=filename)
 
     def spawn_page(self, restart=False):
-        CHROMIUM_ARGS = [
-            "--window-position={},{}".format(self.location_info["x"], self.location_info["y"]),
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--no-first-run",
-            "--disable-blink-features=AutomationControlled",
-            "--mute-audio",
-            "--webrtc-ip-handling-policy=disable_non_proxied_udp",
-            "--force-webrtc-ip-handling-policy",
-        ]
+        chromium_args = stealth.get_stealth_chromium_args(
+            location_x=self.location_info["x"],
+            location_y=self.location_info["y"],
+            headless=self.headless,
+            low_cpu=self.low_cpu,
+        )
 
-        if self.headless:
-            CHROMIUM_ARGS.append("--headless")
-
-        proxy_dict = self.proxy_dict
-
-        if not proxy_dict:
-            proxy_dict = None
+        proxy_dict = self.proxy_dict if self.proxy_dict else None
 
         self.status = utils.InstanceStatus.RESTARTING if restart else utils.InstanceStatus.STARTING
 
@@ -151,18 +165,35 @@ class Instance(ABC):
             proxy=proxy_dict,
             channel="chrome",
             headless=False,
-            args=CHROMIUM_ARGS,
+            args=chromium_args,
         )
 
         major_version = self.browser.version.split(".")[0]
         self.context = self.browser.new_context(
             viewport={"width": 800, "height": 600},
             user_agent=f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major_version}.0.0.0 Safari/537.36",
+            locale="en-US",
+            timezone_id="America/New_York",
+            color_scheme="dark",
             proxy=proxy_dict,
         )
 
+        stealth.apply_stealth_to_context(self.context)
         self.page = self.context.new_page()
-        self.page.add_init_script("""navigator.webdriver = false;""")
+        stealth.apply_stealth_to_page(self.page)
+
+        if self.low_cpu:
+            def route_interceptor(route):
+                resource_type = route.request.resource_type
+                if resource_type in ["image", "media", "font"]:
+                    route.abort()
+                else:
+                    route.continue_()
+
+            try:
+                self.page.route("**/*", route_interceptor)
+            except Exception as e:
+                logger.warning(f"Failed to set route interceptor for low_cpu: {e}")
 
     def goto_with_retry(self, url, max_tries=3, timeout=20000):
         """
@@ -208,3 +239,31 @@ class Instance(ABC):
             self.status = utils.InstanceStatus.WATCHING
         """
         pass
+
+    def send_chat(self, message: str) -> bool:
+        """
+        Send a chat message to the active stream.
+        """
+        try:
+            if not self.page:
+                return False
+            # Generic chat input fallback
+            chat_inputs = [
+                'textarea[data-a-target="chat-input"]',
+                'div[data-a-target="chat-input"]',
+                'input#message-input',
+                'textarea#message-input',
+                'div[contenteditable="true"]',
+                'input[placeholder*="chat" i]',
+                'textarea[placeholder*="chat" i]',
+            ]
+            for selector in chat_inputs:
+                if self.page.query_selector(selector):
+                    self.page.click(selector)
+                    self.page.fill(selector, message)
+                    self.page.keyboard.press("Enter")
+                    logger.info(f"Instance {self.id} sent message via {selector}")
+                    return True
+        except Exception as e:
+            logger.warning(f"Instance {self.id} failed to send chat message: {e}")
+        return False

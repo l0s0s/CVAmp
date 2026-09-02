@@ -5,8 +5,9 @@ description = "Viewer Amplifier bot with playwright. Spawns low-resolution muted
 authors = ["KevinBytesTheDust <kevin@blueloperlabs.ch>"]
 
 [tool.poetry.dependencies]
-python = "^3.11.0, <3.12"
-playwright = "1.43.0"
+python = ">=3.10"
+playwright = ">=1.43.0"
+playwright-stealth = ">=1.0.6"
 psutil = "^5.9.0"
 toml = "^0.10.2"
 sv-ttk = "^0.1"
