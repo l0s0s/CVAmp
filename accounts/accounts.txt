@@ -1,0 +1,14 @@
+# CVAmp Accounts File
+# One account per line.
+#
+# Examples:
+# Twitch auth token:
+# twitch:oauth:xxxxxxxxxxxxxxxxxxxxxx
+# or simply:
+# twitch:your_auth_token_here
+#
+# Kick session:
+# kick:your_session_token_here
+#
+# If you have JSON storage state / cookie export files from Playwright or EditThisCookie,
+# you can also place them directly in this accounts/ folder as .json files!

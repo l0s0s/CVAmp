@@ -10,6 +10,7 @@ from . import logger_config, utils, sites
 from .instance import Instance
 
 logger_config.setup()
+from .accounts import AccountGetter
 from .proxy import ProxyGetter
 from .screen import Screen
 from .service import RestartChecker
@@ -38,6 +39,7 @@ class InstanceManager:
         self._auto_restart = auto_restart
         self._low_cpu = low_cpu
         self.proxies = ProxyGetter(proxy_file_name)
+        self.accounts = AccountGetter("accounts.txt")
         self.spawn_interval_seconds = spawn_interval_seconds
         self.target_url = target_url
 
@@ -217,10 +219,11 @@ class InstanceManager:
                 return
 
             site_class = self.get_site_class(target_url)
+            account = self.accounts.get_account(site_class.site_name)
 
             server_ip = proxy.get("server", "no proxy")
             logger.info(
-                f"Ordered {site_class.site_name} instance {browser_instance_id}, {threading.currentThread().name}, proxy {server_ip}"
+                f"Ordered {site_class.site_name} instance {browser_instance_id}, {threading.currentThread().name}, proxy {server_ip}, auth: {bool(account)}"
             )
 
             browser_instance = site_class(
@@ -231,6 +234,7 @@ class InstanceManager:
                 headless=self._headless,
                 auto_restart=self._auto_restart,
                 low_cpu=self._low_cpu,
+                account_dict=account,
                 instance_id=browser_instance_id,
             )
 

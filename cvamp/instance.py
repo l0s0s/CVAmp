@@ -26,6 +26,7 @@ class Instance(ABC):
         headless=False,
         auto_restart=False,
         low_cpu=False,
+        account_dict=None,
         instance_id=-1,
     ):
         self.playwright = None
@@ -42,6 +43,7 @@ class Instance(ABC):
         self.headless = headless
         self.auto_restart = auto_restart
         self.low_cpu = low_cpu
+        self.account_dict = account_dict
 
         self.last_restart_dt = datetime.datetime.now()
 
@@ -147,6 +149,61 @@ class Instance(ABC):
         filename = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + f"_instance{self.id}.png"
         self.page.screenshot(path=filename)
 
+    def apply_authentication(self):
+        if not self.account_dict or not self.context:
+            return
+        try:
+            import os
+            import json
+            service = self.account_dict.get("service", "")
+            token = self.account_dict.get("token", "")
+            if not token:
+                return
+
+            if service == "json_cookie" or (isinstance(token, str) and token.endswith(".json")):
+                path = self.account_dict.get("path", token)
+                if os.path.exists(path):
+                    with open(path, "r", encoding="utf-8") as f:
+                        cookies_data = json.load(f)
+                    if isinstance(cookies_data, list):
+                        self.context.add_cookies(cookies_data)
+                    elif isinstance(cookies_data, dict) and "cookies" in cookies_data:
+                        self.context.add_cookies(cookies_data["cookies"])
+                    logger.info(f"Instance {self.id} applied JSON cookies from {path}")
+                    return
+
+            site_identifier = (self.site_url or "").lower()
+            if "twitch" in site_identifier or service == "twitch":
+                clean_token = token
+                if clean_token.lower().startswith("oauth:"):
+                    clean_token = clean_token[6:].strip()
+                if clean_token.lower().startswith("auth-token:"):
+                    clean_token = clean_token[11:].strip()
+                self.context.add_cookies([
+                    {
+                        "name": "auth-token",
+                        "value": clean_token,
+                        "domain": ".twitch.tv",
+                        "path": "/",
+                    }
+                ])
+                logger.info(f"Instance {self.id} authenticated on Twitch with auth-token.")
+            elif "kick" in site_identifier or service == "kick":
+                clean_token = token
+                if clean_token.lower().startswith("kick:"):
+                    clean_token = clean_token[5:].strip()
+                self.context.add_cookies([
+                    {
+                        "name": "session_token",
+                        "value": clean_token,
+                        "domain": ".kick.com",
+                        "path": "/",
+                    }
+                ])
+                logger.info(f"Instance {self.id} authenticated on Kick with session_token.")
+        except Exception as e:
+            logger.warning(f"Instance {self.id} authentication error: {e}")
+
     def spawn_page(self, restart=False):
         chromium_args = stealth.get_stealth_chromium_args(
             location_x=self.location_info["x"],
@@ -178,6 +235,7 @@ class Instance(ABC):
             proxy=proxy_dict,
         )
 
+        self.apply_authentication()
         stealth.apply_stealth_to_context(self.context)
         self.page = self.context.new_page()
         stealth.apply_stealth_to_page(self.page)

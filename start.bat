@@ -87,6 +87,11 @@ echo.
 if not exist "proxy" mkdir "proxy"
 if not exist "proxy\proxy_list.txt" echo # Format: ip:port or ip:port:user:password > "proxy\proxy_list.txt"
 
+if not exist "accounts" mkdir "accounts"
+if not exist "accounts\accounts.txt" (
+    echo # Format: twitch:auth_token or kick:session_token > "accounts\accounts.txt"
+)
+
 echo ===================================================
 echo [INFO] Launching CVAmp GUI
 echo ===================================================

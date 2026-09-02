@@ -276,25 +276,44 @@ class TabMain(tk.Frame):
         separator_right.place(x=-170, relx=1, rely=0, relwidth=0.2, relheight=1)
 
         # left
-        proxy_available_text = tk.Label(self, text="Proxies Available", borderwidth=2)
-        proxy_available_text.place(x=40, y=10)
-        proxy_available = tk.Label(self, text="0", borderwidth=2, relief="solid", width=5)
-        proxy_available.place(x=70, y=40)
+        proxy_available_text = tk.Label(self, text="Proxies", borderwidth=1)
+        proxy_available_text.place(x=20, y=10)
+        proxy_available = tk.Label(self, text="0", borderwidth=2, relief="solid", width=4)
+        proxy_available.place(x=25, y=35)
         proxy_available.configure(text=len(self.manager.proxies.proxy_list))
 
-        lbl_buy = tk.Label(self, text="(buy more)", fg="blue", cursor="hand2")
-        lbl_buy.bind(
+        accounts_text = tk.Label(self, text="Accounts", borderwidth=1)
+        accounts_text.place(x=95, y=10)
+        accounts_available = tk.Label(self, text="0", borderwidth=2, relief="solid", width=4)
+        accounts_available.place(x=105, y=35)
+        accounts_available.configure(text=self.manager.accounts.count)
+
+        lbl_proxies = tk.Label(self, text="proxies", fg="blue", cursor="hand2")
+        lbl_proxies.bind(
             "<Button-1>",
             lambda event: threading.Thread(
                 target=open_multiple_urls,
                 args=(
                     "https://blueloperlabs.ch/proxy/tf",
-                    "https://blueloperlabs.ch/proxy-ps/tf",
                     "https://github.com/KevinBytesTheDust/cvamp/wiki/Webshare.io-Proxies-Guide",
                 ),
             ).start(),
         )
-        lbl_buy.place(x=58, y=62)
+        lbl_proxies.place(x=22, y=62)
+
+        def open_accounts_folder():
+            acc_dir = os.path.join(os.getcwd(), "accounts")
+            os.makedirs(acc_dir, exist_ok=True)
+            if os.name == "nt":
+                os.startfile(acc_dir)
+            elif sys.platform == "darwin":
+                os.system(f"open '{acc_dir}'")
+            else:
+                os.system(f"xdg-open '{acc_dir}'")
+
+        lbl_acc = tk.Label(self, text="accounts", fg="blue", cursor="hand2")
+        lbl_acc.bind("<Button-1>", lambda event: open_accounts_folder())
+        lbl_acc.place(x=100, y=62)
 
         headless_checkbox = ttk.Checkbutton(
             self,
