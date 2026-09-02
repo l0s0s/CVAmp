@@ -64,12 +64,20 @@ class GUI:
         path_to_binaries = getattr(sys, "_MEIPASS", non_pyinstaller_path)  # default to last arg
         path_to_icon = os.path.abspath(os.path.join(path_to_binaries, "cvamp_logo.ico"))
 
-        if os.name == "nt":
-            self.root.iconbitmap(path_to_icon)
+        if os.name == "nt" and os.path.exists(path_to_icon):
+            try:
+                self.root.iconbitmap(path_to_icon)
+            except Exception:
+                pass
 
         path_to_toml = os.path.abspath(os.path.join(path_to_binaries, "pyproject.toml"))
-        version = toml.load(path_to_toml)["tool"]["poetry"]["version"]
-        self.root.title(f"Crude Viewer Amplifier | v{version} | kevin@blueloperlabs.ch")
+        version = "0.8.0"
+        if os.path.exists(path_to_toml):
+            try:
+                version = toml.load(path_to_toml).get("tool", {}).get("poetry", {}).get("version", "0.8.0")
+            except Exception:
+                pass
+        self.root.title(f"Crude Viewer Amplifier PRO | v{version} | kevin@blueloperlabs.ch")
 
     def run(self):
         self.root.geometry("600x335+500+500")

@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableDelayedExpansion
 title CVAmp - Crude Viewer Amplifier
 
 cd /d "%~dp0"
@@ -9,92 +9,122 @@ echo       CVAmp (Crude Viewer Amplifier) Launcher
 echo ===================================================
 echo.
 
-:: 1. Check Python installation
-set "PYTHON_CMD="
-python --version >nul 2>&1
+REM 1. Find Python executable
+set "PYTHON_EXE="
+
+REM Try 'py -3'
+py -3 -c "import sys" >nul 2>&1
 if !errorlevel! equ 0 (
-    set "PYTHON_CMD=python"
-) else (
-    py -3 --version >nul 2>&1
-    if !errorlevel! equ 0 (
-        set "PYTHON_CMD=py -3"
-    ) else (
-        py --version >nul 2>&1
-        if !errorlevel! equ 0 (
-            set "PYTHON_CMD=py"
-        )
+    set "PYTHON_EXE=py -3"
+    goto :PYTHON_FOUND
+)
+
+REM Try 'python'
+python -c "import sys" >nul 2>&1
+if !errorlevel! equ 0 (
+    set "PYTHON_EXE=python"
+    goto :PYTHON_FOUND
+)
+
+REM Try 'py'
+py -c "import sys" >nul 2>&1
+if !errorlevel! equ 0 (
+    set "PYTHON_EXE=py"
+    goto :PYTHON_FOUND
+)
+
+REM Scan common Windows installation directories
+for %%D in (
+    "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+    "%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
+    "%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
+    "C:\Python312\python.exe"
+    "C:\Python311\python.exe"
+    "C:\Python310\python.exe"
+    "C:\Program Files\Python312\python.exe"
+    "C:\Program Files\Python311\python.exe"
+    "C:\Program Files\Python310\python.exe"
+) do (
+    if exist %%D (
+        set "PYTHON_EXE=%%~D"
+        goto :PYTHON_FOUND
     )
 )
 
-if "%PYTHON_CMD%"=="" (
-    echo [ERROR] Python is not installed or not found in system PATH!
-    echo Please install Python 3.10, 3.11, or 3.12 from: https://www.python.org/downloads/
-    echo IMPORTANT: Make sure to check "Add Python to PATH" during installation.
-    echo.
-    pause
-    exit /b 1
-)
+:PYTHON_NOT_FOUND
+echo [ERROR] Python was not found on your system!
+echo.
+echo Please download and install Python (3.10 - 3.12) from:
+echo https://www.python.org/downloads/
+echo.
+echo [IMPORTANT] When installing, MAKE SURE to check:
+echo  [x] "Add python.exe to PATH"
+echo.
+pause
+exit /b 1
 
-echo [INFO] Found Python:
-%PYTHON_CMD% --version
+:PYTHON_FOUND
+echo [INFO] Python detected:
+!PYTHON_EXE! --version
 echo.
 
-:: 2. Setup virtual environment (venv)
-if not exist "venv\Scripts\activate.bat" (
-    echo [INFO] Creating virtual environment (venv)...
-    %PYTHON_CMD% -m venv venv
+REM 2. Create virtual environment if missing
+if not exist "venv\Scripts\python.exe" (
+    echo [INFO] Setting up virtual environment (venv)...
+    !PYTHON_EXE! -m venv venv
     if !errorlevel! neq 0 (
         echo [ERROR] Failed to create virtual environment!
+        echo Please ensure Python is installed with standard venv support.
         pause
         exit /b 1
     )
     echo [INFO] Virtual environment created successfully.
+    echo.
 )
 
-:: 3. Activate venv
-call venv\Scripts\activate.bat
+REM 3. Upgrade pip and install requirements
+echo [INFO] Checking dependencies (requirements.txt)...
+venv\Scripts\python.exe -m pip install --upgrade pip
+venv\Scripts\python.exe -m pip install -r requirements.txt
 if !errorlevel! neq 0 (
-    echo [ERROR] Failed to activate virtual environment!
-    pause
-    exit /b 1
-)
-
-:: 4. Install dependencies
-echo [INFO] Checking and installing dependencies...
-python -m pip install --upgrade pip --quiet
-python -m pip install -r requirements.txt --quiet
-if !errorlevel! neq 0 (
+    echo.
     echo [ERROR] Failed to install required Python packages!
     pause
     exit /b 1
 )
+echo.
 
-:: 5. Install Playwright Chromium browser if missing
-echo [INFO] Ensuring Playwright Chromium is installed...
-python -m playwright install chromium
+REM 4. Ensure Playwright Chromium browser binary is downloaded
+echo [INFO] Checking Playwright Chromium browser...
+venv\Scripts\python.exe -m playwright install chromium
 if !errorlevel! neq 0 (
     echo [WARNING] Playwright browser installation finished with warnings.
 )
+echo.
 
-:: 6. Ensure proxy directory and file exist
+REM 5. Ensure proxy directory and default file exist
 if not exist "proxy" (
     mkdir "proxy"
 )
 if not exist "proxy\proxy_list.txt" (
     echo # Format: ip:port or ip:port:user:password > "proxy\proxy_list.txt"
-    echo [INFO] Created default proxy\proxy_list.txt
+    echo [INFO] Initialized default proxy\proxy_list.txt
 )
 
-:: 7. Launch CVAmp
-echo.
-echo [INFO] Starting CVAmp...
+REM 6. Run CVAmp
 echo ===================================================
-python main_gui.py
+echo [INFO] Launching CVAmp GUI...
+echo ===================================================
+echo.
+venv\Scripts\python.exe main_gui.py
 
 if !errorlevel! neq 0 (
     echo.
-    echo [ERROR] Application exited with an error.
-    pause
+    echo [ERROR] Application exited with error code !errorlevel!
 )
 
-deactivate >nul 2>&1
+echo.
+echo ===================================================
+echo Process finished.
+echo ===================================================
+pause
